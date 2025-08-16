@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -117,21 +117,184 @@
     <div class="main" id="main"></div>
   </div>
 
-<script>
-/**************** STATE ****************/
-const LS_KEY='yt_clone_exact_v1';
-const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
-const empty=()=>({users:[],channels:[],videos:[],likes:{},dislikes:{},subs:{},currentUserId:null});
+<script type="module">
+// Import Firebase modules
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, addDoc, getDocs, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
-function load(){try{const raw=localStorage.getItem(LS_KEY);if(raw){const st=JSON.parse(raw);for(const k of ['likes','dislikes','subs']){for(const id in st[k]) st[k][id]=new Set(st[k][id]);}return st;}}catch(e){}
- const st=empty();
- const u=uid(), ch=uid();
- st.users.push({id:u,username:'demo',email:'demo@example.com',password:'demo',channelId:ch});
- st.channels.push({id:ch,name:'Demo Channel',ownerId:u,subscribers:0});
- st.likes[u]=new Set(); st.dislikes[u]=new Set(); st.subs[u]=new Set();
- st.currentUserId=u; save(st); return st; }
-function save(st){const copy=JSON.parse(JSON.stringify(st));for(const k of ['likes','dislikes','subs']){for(const id in st[k]) copy[k][id]=Array.from(st[k][id]);}localStorage.setItem(LS_KEY,JSON.stringify(copy));}
-let state=load();
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDQhKmAVKvtfEuTBUriUOtBC6kwAIvQtQA",
+  authDomain: "fir-8e047.firebaseapp.com",
+  projectId: "fir-8e047",
+  storageBucket: "fir-8e047.firebasestorage.app",
+  messagingSenderId: "886892791288",
+  appId: "1:886892791288:web:b6a041cf5a4bd6bc42c20d",
+  measurementId: "G-4L2JHED4ZF"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+/**************** STATE ****************/
+const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+let state = {users:[],channels:[],videos:[],likes:{},dislikes:{},subs:{},currentUserId:null};
+let currentUserDoc = null;
+
+// Firebase collections
+const usersCol = collection(db, 'users');
+const channelsCol = collection(db, 'channels');
+const videosCol = collection(db, 'videos');
+
+// Load data from Firebase
+async function loadFromFirebase() {
+  try {
+    // Load users
+    const usersSnapshot = await getDocs(usersCol);
+    state.users = usersSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+    
+    // Load channels
+    const channelsSnapshot = await getDocs(channelsCol);
+    state.channels = channelsSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+    
+    // Load videos
+    const videosSnapshot = await getDocs(videosCol);
+    state.videos = videosSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+    
+    // Load likes, dislikes, subs as objects with arrays
+    const interactionsDoc = await getDoc(doc(db, 'interactions', 'data'));
+    if (interactionsDoc.exists()) {
+      const data = interactionsDoc.data();
+      state.likes = data.likes || {};
+      state.dislikes = data.dislikes || {};
+      state.subs = data.subs || {};
+      
+      // Convert arrays to Sets for easier manipulation
+      Object.keys(state.likes).forEach(userId => {
+        state.likes[userId] = new Set(state.likes[userId] || []);
+      });
+      Object.keys(state.dislikes).forEach(userId => {
+        state.dislikes[userId] = new Set(state.dislikes[userId] || []);
+      });
+      Object.keys(state.subs).forEach(userId => {
+        state.subs[userId] = new Set(state.subs[userId] || []);
+      });
+    } else {
+      state.likes = {};
+      state.dislikes = {};
+      state.subs = {};
+    }
+    
+    // Check if demo data exists, if not create it
+    if (state.users.length === 0) {
+      await createDemoData();
+    }
+    
+  } catch (error) {
+    console.error("Error loading from Firebase:", error);
+  }
+}
+
+// Save data to Firebase
+async function saveToFirebase() {
+  try {
+    // Save users
+    for (const user of state.users) {
+      await setDoc(doc(usersCol, user.id), {
+        username: user.username,
+        email: user.email,
+        password: user.password,
+        channelId: user.channelId
+      });
+    }
+    
+    // Save channels
+    for (const channel of state.channels) {
+      await setDoc(doc(channelsCol, channel.id), {
+        name: channel.name,
+        ownerId: channel.ownerId,
+        subscribers: channel.subscribers || 0
+      });
+    }
+    
+    // Save videos
+    for (const video of state.videos) {
+      await setDoc(doc(videosCol, video.id), {
+        title: video.title,
+        desc: video.desc,
+        dataURL: video.dataURL,
+        thumb: video.thumb,
+        channelId: video.channelId,
+        likes: video.likes || 0,
+        dislikes: video.dislikes || 0,
+        views: video.views || 0,
+        createdAt: video.createdAt
+      });
+    }
+    
+    // Save interactions (likes, dislikes, subs)
+    const interactionsData = {
+      likes: {},
+      dislikes: {},
+      subs: {}
+    };
+    
+    Object.keys(state.likes).forEach(userId => {
+      interactionsData.likes[userId] = Array.from(state.likes[userId] || []);
+    });
+    Object.keys(state.dislikes).forEach(userId => {
+      interactionsData.dislikes[userId] = Array.from(state.dislikes[userId] || []);
+    });
+    Object.keys(state.subs).forEach(userId => {
+      interactionsData.subs[userId] = Array.from(state.subs[userId] || []);
+    });
+    
+    await setDoc(doc(db, 'interactions', 'data'), interactionsData);
+    
+  } catch (error) {
+    console.error("Error saving to Firebase:", error);
+  }
+}
+
+// Create demo data
+async function createDemoData() {
+  const demoUserId = uid();
+  const demoChannelId = uid();
+  
+  const demoUser = {
+    id: demoUserId,
+    username: 'demo',
+    email: 'demo@example.com',
+    password: 'demo',
+    channelId: demoChannelId
+  };
+  
+  const demoChannel = {
+    id: demoChannelId,
+    name: 'Demo Channel',
+    ownerId: demoUserId,
+    subscribers: 0
+  };
+  
+  state.users.push(demoUser);
+  state.channels.push(demoChannel);
+  state.likes[demoUserId] = new Set();
+  state.dislikes[demoUserId] = new Set();
+  state.subs[demoUserId] = new Set();
+  state.currentUserId = demoUserId;
+  
+  await saveToFirebase();
+}
+
+// Initialize app
+async function initApp() {
+  await loadFromFirebase();
+  render();
+}
+
 const currentUser=()=> state.users.find(x=>x.id===state.currentUserId)||null;
 
 /**************** UTILS ****************/
@@ -148,24 +311,24 @@ function toggleSidebar(){const s=$('#sidebar'); s.style.display=(s.style.display
 /**************** RENDER ****************/
 function render(){renderAuth(); route();}
 function renderAuth(){const a=$('#authArea');const u=currentUser();if(!u){a.innerHTML=`<button class=btn onclick="goto('#/login')">Login</button>`;return;} const ch=state.channels.find(c=>c.id===u.channelId); a.innerHTML=`<span style="color:#ddd;font-size:14px">Hi, ${u.username}</span> <button class=btn onclick="goto('#/upload')">➕</button> <button class=btn onclick="goto('#/channel/${ch?.id||''}')">My channel</button> <button class=btn onclick="logout()">Logout</button>`;}
-function logout(){state.currentUserId=null; save(state); render();}
+async function logout(){state.currentUserId=null; await saveToFirebase(); render();}
 
 function route(){const main=$('#main'); main.innerHTML=''; const h=location.hash||'#/'; const [_,r,p]=h.split('/'); if(r===''||r==='#') return renderHome(); if(r==='watch') return renderWatch(p); if(r==='upload') return renderUpload(); if(r==='login') return renderAuthPages(); if(r==='channel') return renderChannel(p); if(r==='subs') return renderSubs(); if(r==='library') return renderLibrary(); if(r==='search') return renderHome(decodeURIComponent(p||'')); renderHome();}
 
 function renderHome(q=''){const main=$('#main'); const vids=state.videos.slice().reverse().filter(v=>v.title.toLowerCase().includes(q.toLowerCase())); const grid=document.createElement('div'); grid.className='grid'; grid.innerHTML= vids.length? vids.map(cardHTML).join('') : `<div class="container panel"><h2>Welcome</h2><p>Upload your first video via <b>Upload</b>. Demo login: <code>demo / demo</code>.</p></div>`; main.appendChild(grid);}
 function cardHTML(v){const ch=state.channels.find(c=>c.id===v.channelId)||{name:'Unknown'}; return `<a class=card href="#/watch/${v.id}"><img class=thumb src="${v.thumb}" alt="thumbnail"><div class=row><div class=avatar></div><div style=min-width:0><div class=title>${escapeHTML(v.title)}</div><div class=meta>${escapeHTML(ch.name)} • ${formatViews(v.views||0)} • ${timeAgo(v.createdAt)}</div></div></div></a>`}
 
-function renderWatch(id){const v=state.videos.find(x=>x.id===id); const main=$('#main'); if(!v){ main.innerHTML='<div class=container><h2>Video not found</h2></div>'; return;} v.views=(v.views||0)+1; save(state); const ch=state.channels.find(c=>c.id===v.channelId); const u=currentUser(); const liked=u && state.likes[u.id]?.has(v.id); const disliked=u && state.dislikes[u.id]?.has(v.id); const aside=relatedAside(v.id);
+function renderWatch(id){const v=state.videos.find(x=>x.id===id); const main=$('#main'); if(!v){ main.innerHTML='<div class=container><h2>Video not found</h2></div>'; return;} v.views=(v.views||0)+1; saveToFirebase(); const ch=state.channels.find(c=>c.id===v.channelId); const u=currentUser(); const liked=u && state.likes[u.id]?.has(v.id); const disliked=u && state.dislikes[u.id]?.has(v.id); const aside=relatedAside(v.id);
  const html=`<div class=watch><div><video class=player src="${v.dataURL||v.url}" poster="${v.thumb}" controls autoplay></video><h2 style="margin:12px 0">${escapeHTML(v.title)}</h2><div class=actions><div class=meta>${formatViews(v.views)} • ${timeAgo(v.createdAt)}</div><div style="display:flex;gap:8px"><button class=btn onclick="toggleLike('${v.id}')">${liked?'👍 Liked':'👍 Like'} (${v.likes||0})</button><button class=btn onclick="toggleDislike('${v.id}')">${disliked?'👎 Disliked':'👎 Dislike'} (${v.dislikes||0})</button><button class=btn onclick="share('${location.href}')">Share</button></div></div><div class=panel style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:12px"><div style="display:flex;gap:10px;align-items:center"><div class=avatar></div><div><div style=font-weight:600>${escapeHTML(ch.name)}</div><div class=meta>${ch.subscribers||0} subscribers</div></div></div><div><button class="btn primary" onclick="toggleSub('${ch.id}')">${u&&state.subs[u.id]?.has(ch.id)?'Subscribed':'Subscribe'}</button></div></div><div class=panel style=margin-top:12px><div style="white-space:pre-wrap;color:#ddd">${escapeHTML(v.desc||'')}</div></div></div>${aside}</div>`; main.innerHTML=html;}
 function relatedAside(cur){const rel=state.videos.filter(v=>v.id!==cur).slice(-12).reverse(); return `<div>${rel.map(v=>`<a class=row href="#/watch/${v.id}"><img class=thumb style="width:180px;border-radius:8px" src="${v.thumb}"><div style=min-width:0><div class="title" style="font-size:14px">${escapeHTML(v.title)}</div><div class=meta>${formatViews(v.views||0)} • ${timeAgo(v.createdAt)}</div></div></a>`).join('')}</div>`}
 
 function renderUpload(){const u=currentUser(); if(!u) return goto('#/login'); const main=$('#main'); const html=`<div class=container><div class=panel><h2>Upload video</h2><form onsubmit="handleUpload(event)"><div class=field><label>Title</label><input name=title required></div><div class=field><label>Description</label><textarea name=desc rows=4></textarea></div><div class=field><label>Video file (small recommended)</label><input type=file name=file accept=video/* required></div><button class="btn primary" type=submit>Upload</button></form></div></div>`; main.innerHTML=html;}
-async function handleUpload(e){e.preventDefault(); const fd=new FormData(e.target); const file=fd.get('file'); if(!file) return; const title=fd.get('title'); const desc=fd.get('desc'); const dataURL=await fileToDataURL(file); const thumb=makeThumb(title); const u=currentUser(); const id=uid(); state.videos.push({id,title,desc,dataURL,thumb,channelId:u.channelId,likes:0,dislikes:0,views:0,createdAt:Date.now()}); save(state); goto('#/watch/'+id); render();}
+async function handleUpload(e){e.preventDefault(); const fd=new FormData(e.target); const file=fd.get('file'); if(!file) return; const title=fd.get('title'); const desc=fd.get('desc'); const dataURL=await fileToDataURL(file); const thumb=makeThumb(title); const u=currentUser(); const id=uid(); state.videos.push({id,title,desc,dataURL,thumb,channelId:u.channelId,likes:0,dislikes:0,views:0,createdAt:Date.now()}); await saveToFirebase(); goto('#/watch/'+id); render();}
 function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f);});}
 
 function renderAuthPages(){const main=$('#main'); const html=`<div class=container style="display:grid;gap:16px;grid-template-columns:1fr 1fr"><div class=panel><h2>Login</h2><form onsubmit="login(event)"><div class=field><label>Username or Email</label><input name=id required placeholder="demo"></div><div class=field><label>Password</label><input type=password name=pwd required placeholder="demo"></div><button class="btn primary" type=submit>Login</button></form></div><div class=panel><h2>Register</h2><form onsubmit="register(event)"><div class=field><label>Username</label><input name=username required></div><div class=field><label>Email</label><input name=email type=email required></div><div class=field><label>Password</label><input type=password name=pwd required></div><div class=field><label>Channel name</label><input name=channel required></div><button class="btn primary" type=submit>Create account</button></form></div></div>`; main.innerHTML=html;}
-function login(e){e.preventDefault(); const fd=new FormData(e.target); const id=fd.get('id'); const pwd=fd.get('pwd'); const u=state.users.find(x=>x.username===id||x.email===id); if(!u||u.password!==pwd){alert('Invalid credentials'); return;} state.currentUserId=u.id; save(state); goto('#/'); render();}
-function register(e){e.preventDefault(); const fd=new FormData(e.target); const username=fd.get('username').trim(); const email=fd.get('email').trim(); const pwd=fd.get('pwd'); const chName=fd.get('channel').trim(); if(state.users.some(u=>u.username===username)){alert('Username taken'); return;} const id=uid(), ch=uid(); state.users.push({id,username,email,password:pwd,channelId:ch}); state.channels.push({id:ch,name:chName,ownerId:id,subscribers:0}); state.likes[id]=new Set(); state.dislikes[id]=new Set(); state.subs[id]=new Set(); state.currentUserId=id; save(state); goto('#/'); render();}
+async function login(e){e.preventDefault(); const fd=new FormData(e.target); const id=fd.get('id'); const pwd=fd.get('pwd'); const u=state.users.find(x=>x.username===id||x.email===id); if(!u||u.password!==pwd){alert('Invalid credentials'); return;} state.currentUserId=u.id; await saveToFirebase(); goto('#/'); render();}
+async function register(e){e.preventDefault(); const fd=new FormData(e.target); const username=fd.get('username').trim(); const email=fd.get('email').trim(); const pwd=fd.get('pwd'); const chName=fd.get('channel').trim(); if(state.users.some(u=>u.username===username)){alert('Username taken'); return;} const id=uid(), ch=uid(); state.users.push({id,username,email,password:pwd,channelId:ch}); state.channels.push({id:ch,name:chName,ownerId:id,subscribers:0}); state.likes[id]=new Set(); state.dislikes[id]=new Set(); state.subs[id]=new Set(); state.currentUserId=id; await saveToFirebase(); goto('#/'); render();}
 
 function toggleLike(vid){const u=currentUser(); if(!u) return goto('#/login'); if(!state.likes[u.id]) state.likes[u.id]=new Set(); const set=state.likes[u.id]; const v=state.videos.find(x=>x.id===vid); if(set.has(vid)){set.delete(vid); v.likes=Math.max(0,(v.likes||0)-1);} else {set.add(vid); v.likes=(v.likes||0)+1; if(state.dislikes[u.id]?.has(vid)){state.dislikes[u.id].delete(vid); v.dislikes=Math.max(0,(v.dislikes||0)-1);} } save(state); render(); goto('#/watch/'+vid);} 
 function toggleDislike(vid){const u=currentUser(); if(!u) return goto('#/login'); if(!state.dislikes[u.id]) state.dislikes[u.id]=new Set(); const set=state.dislikes[u.id]; const v=state.videos.find(x=>x.id===vid); if(set.has(vid)){set.delete(vid); v.dislikes=Math.max(0,(v.dislikes||0)-1);} else {set.add(vid); v.dislikes=(v.dislikes||0)+1; if(state.likes[u.id]?.has(vid)){state.likes[u.id].delete(vid); v.likes=Math.max(0,(v.likes||0)-1);} } save(state); render(); goto('#/watch/'+vid);} 
