@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube • Local Clone</title>
+  <style>
+    :root{
+      --bg:#0f0f0f; --bg-elev:#121212; --elev-2:#1a1a1a; --card:#181818; --muted:#aaa; --text:#f1f1f1; --accent:#3ea6ff;
+      --chip:#272727; --chip-border:#3a3a3a; --border:#1f1f1f;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text)}
+    a{color:inherit;text-decoration:none}
+    button{cursor:pointer}
+
+    /* LAYOUT */
+    .app{display:grid; grid-template-columns: 240px 1fr; grid-template-rows:56px 48px 1fr; grid-template-areas:
+      "top top" "chips chips" "side main"; min-height:100vh}
+
+    /* TOPBAR */
+    .topbar{grid-area:top; display:flex; align-items:center; gap:12px; padding:8px 12px; background:var(--bg-elev); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10}
+    .iconbtn{width:40px;height:40px;border-radius:20px;background:transparent;border:0;display:grid;place-items:center;color:#ddd}
+    .iconbtn:hover{background:#222}
+    .logo{display:flex; align-items:center; gap:8px; font-weight:700}
+    .logo .yt{width:28px;height:20px;border-radius:4px;background:#ff0033;position:relative}
+    .logo .yt::after{content:""; position:absolute; left:11px; top:5px; border-left:9px solid #fff; border-top:5px solid transparent; border-bottom:5px solid transparent}
+
+    .search{flex:1; display:flex; justify-content:center}
+    .search form{display:flex; width:min(720px,90%)}
+    .search input{flex:1; height:40px; padding:0 12px; background:#121212; border:1px solid #303030; color:#fff; border-right:0; border-radius:20px 0 0 20px}
+    .search button{width:64px; border:1px solid #303030; border-left:0; border-radius:0 20px 20px 0; background:#222; color:#ddd}
+    .top-right{display:flex; align-items:center; gap:10px}
+
+    /* CHIPS */
+    .chipbar{grid-area:chips; display:flex; gap:10px; padding:10px 16px; background:var(--bg); border-bottom:1px solid var(--border); overflow:auto}
+    .chip{padding:8px 12px; background:var(--chip); border:1px solid var(--chip-border); border-radius:10px; font-size:14px; white-space:nowrap}
+    .chip.active{background:#fff;color:#000}
+
+    /* SIDEBAR */
+    .sidebar{grid-area:side; background:var(--bg-elev); border-right:1px solid var(--border); padding:8px 0; position:sticky; top:104px; height:calc(100vh - 104px); overflow:auto}
+    .side-item{display:flex; align-items:center; gap:14px; padding:10px 16px; color:#ddd}
+    .side-item:hover{background:#1c1c1c}
+    .side-item svg{opacity:.9}
+
+    /* MAIN GRID */
+    .main{grid-area:main; overflow:auto}
+    .grid{display:grid; gap:16px; padding:16px; grid-template-columns: repeat(auto-fill, minmax(310px,1fr));}
+    .card{background:transparent}
+    .thumb{width:100%; aspect-ratio:16/9; background:var(--card); border-radius:12px; overflow:hidden; display:block}
+    .row{display:flex; gap:10px; margin-top:10px}
+    .avatar{width:36px;height:36px;border-radius:999px;background:#333;flex:0 0 auto}
+    .title{font-weight:600; line-height:1.3}
+    .meta{color:var(--muted); font-size:13px}
+
+    /* WATCH */
+    .watch{display:grid; grid-template-columns: 1fr 380px; gap:18px; padding:16px}
+    .player{width:100%; background:#000; border-radius:12px; overflow:hidden}
+    .actions{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between}
+    .btn{padding:8px 12px; border-radius:20px; border:1px solid #303030; background:#222; color:#fff}
+    .btn.primary{background:var(--accent); border-color:transparent; color:#000}
+    .btn[disabled]{opacity:.6; cursor:not-allowed}
+    .panel{background:var(--elev-2); border:1px solid var(--border); border-radius:12px; padding:12px}
+
+    /* FORMS */
+    .container{max-width:860px; margin:20px auto; padding:16px}
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px}
+    .field input, .field textarea{background:#121212; border:1px solid #303030; border-radius:10px; color:#fff; padding:10px}
+
+    /* Responsive */
+    @media(max-width:1100px){ .watch{grid-template-columns:1fr} .sidebar{display:none} .app{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <button class="iconbtn" onclick="toggleSidebar()" title="Menu" aria-label="Menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 12h18M3 18h18" stroke-width="2"/></svg>
+      </button>
+      <a class="logo" href="#/">
+        <span class="yt"></span><span>YouTube</span>
+      </a>
+      <div class="search">
+        <form onsubmit="onSearch(event)">
+          <input id="searchInput" placeholder="Search" />
+          <button type="submit">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="M21 21l-3.5-3.5"/></svg>
+          </button>
+        </form>
+      </div>
+      <div class="top-right">
+        <button class="btn" onclick="goto('#/upload')">Upload</button>
+        <div id="authArea"></div>
+      </div>
+    </div>
+
+    <!-- <div class="chipbar">
+      ${['All','Music','Mixes','Gaming','Tamil Cinema','SM Entertainment','Electropop','YG Entertainment','Android','Contemporary R&B','Dance-Pop','Gadgets'].map((c,i)=>`<span class="chip ${i===0?'active':''}">${c}</span>`).join('')}
+    </div> -->
+
+    <div class="sidebar" id="sidebar">
+      <a class="side-item" href="#/">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+        <span>Home</span>
+      </a>
+      <a class="side-item" href="#/subs">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16v12H4z"/><path d="M22 20H2"/></svg>
+        <span>Subscriptions</span>
+      </a>
+      <a class="side-item" href="#/library">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"/><path d="M20 2H6.5A2.5 2.5 0 0 0 4 4.5v15"/><path d="M8 6h9"/><path d="M8 10h9"/><path d="M8 14h6"/></svg>
+        <span>Library</span>
+      </a>
+    </div>
+
+    <div class="main" id="main"></div>
+  </div>
+
+<script>
+/**************** STATE ****************/
+const LS_KEY='yt_clone_exact_v1';
+const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+const empty=()=>({users:[],channels:[],videos:[],likes:{},dislikes:{},subs:{},currentUserId:null});
+
+function load(){try{const raw=localStorage.getItem(LS_KEY);if(raw){const st=JSON.parse(raw);for(const k of ['likes','dislikes','subs']){for(const id in st[k]) st[k][id]=new Set(st[k][id]);}return st;}}catch(e){}
+ const st=empty();
+ const u=uid(), ch=uid();
+ st.users.push({id:u,username:'demo',email:'demo@example.com',password:'demo',channelId:ch});
+ st.channels.push({id:ch,name:'Demo Channel',ownerId:u,subscribers:0});
+ st.likes[u]=new Set(); st.dislikes[u]=new Set(); st.subs[u]=new Set();
+ st.currentUserId=u; save(st); return st; }
+function save(st){const copy=JSON.parse(JSON.stringify(st));for(const k of ['likes','dislikes','subs']){for(const id in st[k]) copy[k][id]=Array.from(st[k][id]);}localStorage.setItem(LS_KEY,JSON.stringify(copy));}
+let state=load();
+const currentUser=()=> state.users.find(x=>x.id===state.currentUserId)||null;
+
+/**************** UTILS ****************/
+const $=(s,r=document)=>r.querySelector(s); const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+function formatViews(n){if(n>1e9)return(n/1e9).toFixed(1)+'B views';if(n>1e6)return(n/1e6).toFixed(1)+'M views';if(n>1e3)return(n/1e3).toFixed(1)+'K views';return(n||0)+' views';}
+function timeAgo(ts){const d=Date.now()-ts,m=6e4,h=36e5,day=864e5; if(d<h) return Math.max(1,Math.round(d/m))+' minutes ago'; if(d<day) return Math.round(d/h)+' hours ago'; return Math.round(d/day)+' days ago';}
+function makeThumb(text){const c=document.createElement('canvas');c.width=640;c.height=360;const ctx=c.getContext('2d');const g=ctx.createLinearGradient(0,0,640,360);g.addColorStop(0,'#1f2937');g.addColorStop(1,'#111827');ctx.fillStyle=g;ctx.fillRect(0,0,640,360);ctx.fillStyle='#fff';ctx.font='bold 36px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';wrap(ctx,(text||'Video').slice(0,60),320,180,560,44);return c.toDataURL('image/png');}
+function wrap(ctx,t,x,y,maxW,lh){const w=t.split(' ');let line='';let yy=y;for(let i=0;i<w.length;i++){const test=line+w[i]+' ';const ww=ctx.measureText(test).width;if(ww>maxW&&i>0){ctx.fillText(line,x,yy);line=w[i]+' ';yy+=lh;}else{line=test;}}ctx.fillText(line,x,yy)}
+function escapeHTML(s){return (s||'').replace(/[&<>\"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m]));}
+function goto(h){location.hash=h}
+function onSearch(e){e.preventDefault();const q=$('#searchInput').value.trim();goto('#/search/'+encodeURIComponent(q));}
+function toggleSidebar(){const s=$('#sidebar'); s.style.display=(s.style.display==='none')?'block':'none'}
+
+/**************** RENDER ****************/
+function render(){renderAuth(); route();}
+function renderAuth(){const a=$('#authArea');const u=currentUser();if(!u){a.innerHTML=`<button class=btn onclick="goto('#/login')">Login</button>`;return;} const ch=state.channels.find(c=>c.id===u.channelId); a.innerHTML=`<span style="color:#ddd;font-size:14px">Hi, ${u.username}</span> <button class=btn onclick="goto('#/upload')">➕</button> <button class=btn onclick="goto('#/channel/${ch?.id||''}')">My channel</button> <button class=btn onclick="logout()">Logout</button>`;}
+function logout(){state.currentUserId=null; save(state); render();}
+
+function route(){const main=$('#main'); main.innerHTML=''; const h=location.hash||'#/'; const [_,r,p]=h.split('/'); if(r===''||r==='#') return renderHome(); if(r==='watch') return renderWatch(p); if(r==='upload') return renderUpload(); if(r==='login') return renderAuthPages(); if(r==='channel') return renderChannel(p); if(r==='subs') return renderSubs(); if(r==='library') return renderLibrary(); if(r==='search') return renderHome(decodeURIComponent(p||'')); renderHome();}
+
+function renderHome(q=''){const main=$('#main'); const vids=state.videos.slice().reverse().filter(v=>v.title.toLowerCase().includes(q.toLowerCase())); const grid=document.createElement('div'); grid.className='grid'; grid.innerHTML= vids.length? vids.map(cardHTML).join('') : `<div class="container panel"><h2>Welcome</h2><p>Upload your first video via <b>Upload</b>. Demo login: <code>demo / demo</code>.</p></div>`; main.appendChild(grid);}
+function cardHTML(v){const ch=state.channels.find(c=>c.id===v.channelId)||{name:'Unknown'}; return `<a class=card href="#/watch/${v.id}"><img class=thumb src="${v.thumb}" alt="thumbnail"><div class=row><div class=avatar></div><div style=min-width:0><div class=title>${escapeHTML(v.title)}</div><div class=meta>${escapeHTML(ch.name)} • ${formatViews(v.views||0)} • ${timeAgo(v.createdAt)}</div></div></div></a>`}
+
+function renderWatch(id){const v=state.videos.find(x=>x.id===id); const main=$('#main'); if(!v){ main.innerHTML='<div class=container><h2>Video not found</h2></div>'; return;} v.views=(v.views||0)+1; save(state); const ch=state.channels.find(c=>c.id===v.channelId); const u=currentUser(); const liked=u && state.likes[u.id]?.has(v.id); const disliked=u && state.dislikes[u.id]?.has(v.id); const aside=relatedAside(v.id);
+ const html=`<div class=watch><div><video class=player src="${v.dataURL||v.url}" poster="${v.thumb}" controls autoplay></video><h2 style="margin:12px 0">${escapeHTML(v.title)}</h2><div class=actions><div class=meta>${formatViews(v.views)} • ${timeAgo(v.createdAt)}</div><div style="display:flex;gap:8px"><button class=btn onclick="toggleLike('${v.id}')">${liked?'👍 Liked':'👍 Like'} (${v.likes||0})</button><button class=btn onclick="toggleDislike('${v.id}')">${disliked?'👎 Disliked':'👎 Dislike'} (${v.dislikes||0})</button><button class=btn onclick="share('${location.href}')">Share</button></div></div><div class=panel style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:12px"><div style="display:flex;gap:10px;align-items:center"><div class=avatar></div><div><div style=font-weight:600>${escapeHTML(ch.name)}</div><div class=meta>${ch.subscribers||0} subscribers</div></div></div><div><button class="btn primary" onclick="toggleSub('${ch.id}')">${u&&state.subs[u.id]?.has(ch.id)?'Subscribed':'Subscribe'}</button></div></div><div class=panel style=margin-top:12px><div style="white-space:pre-wrap;color:#ddd">${escapeHTML(v.desc||'')}</div></div></div>${aside}</div>`; main.innerHTML=html;}
+function relatedAside(cur){const rel=state.videos.filter(v=>v.id!==cur).slice(-12).reverse(); return `<div>${rel.map(v=>`<a class=row href="#/watch/${v.id}"><img class=thumb style="width:180px;border-radius:8px" src="${v.thumb}"><div style=min-width:0><div class="title" style="font-size:14px">${escapeHTML(v.title)}</div><div class=meta>${formatViews(v.views||0)} • ${timeAgo(v.createdAt)}</div></div></a>`).join('')}</div>`}
+
+function renderUpload(){const u=currentUser(); if(!u) return goto('#/login'); const main=$('#main'); const html=`<div class=container><div class=panel><h2>Upload video</h2><form onsubmit="handleUpload(event)"><div class=field><label>Title</label><input name=title required></div><div class=field><label>Description</label><textarea name=desc rows=4></textarea></div><div class=field><label>Video file (small recommended)</label><input type=file name=file accept=video/* required></div><button class="btn primary" type=submit>Upload</button></form></div></div>`; main.innerHTML=html;}
+async function handleUpload(e){e.preventDefault(); const fd=new FormData(e.target); const file=fd.get('file'); if(!file) return; const title=fd.get('title'); const desc=fd.get('desc'); const dataURL=await fileToDataURL(file); const thumb=makeThumb(title); const u=currentUser(); const id=uid(); state.videos.push({id,title,desc,dataURL,thumb,channelId:u.channelId,likes:0,dislikes:0,views:0,createdAt:Date.now()}); save(state); goto('#/watch/'+id); render();}
+function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f);});}
+
+function renderAuthPages(){const main=$('#main'); const html=`<div class=container style="display:grid;gap:16px;grid-template-columns:1fr 1fr"><div class=panel><h2>Login</h2><form onsubmit="login(event)"><div class=field><label>Username or Email</label><input name=id required placeholder="demo"></div><div class=field><label>Password</label><input type=password name=pwd required placeholder="demo"></div><button class="btn primary" type=submit>Login</button></form></div><div class=panel><h2>Register</h2><form onsubmit="register(event)"><div class=field><label>Username</label><input name=username required></div><div class=field><label>Email</label><input name=email type=email required></div><div class=field><label>Password</label><input type=password name=pwd required></div><div class=field><label>Channel name</label><input name=channel required></div><button class="btn primary" type=submit>Create account</button></form></div></div>`; main.innerHTML=html;}
+function login(e){e.preventDefault(); const fd=new FormData(e.target); const id=fd.get('id'); const pwd=fd.get('pwd'); const u=state.users.find(x=>x.username===id||x.email===id); if(!u||u.password!==pwd){alert('Invalid credentials'); return;} state.currentUserId=u.id; save(state); goto('#/'); render();}
+function register(e){e.preventDefault(); const fd=new FormData(e.target); const username=fd.get('username').trim(); const email=fd.get('email').trim(); const pwd=fd.get('pwd'); const chName=fd.get('channel').trim(); if(state.users.some(u=>u.username===username)){alert('Username taken'); return;} const id=uid(), ch=uid(); state.users.push({id,username,email,password:pwd,channelId:ch}); state.channels.push({id:ch,name:chName,ownerId:id,subscribers:0}); state.likes[id]=new Set(); state.dislikes[id]=new Set(); state.subs[id]=new Set(); state.currentUserId=id; save(state); goto('#/'); render();}
+
+function toggleLike(vid){const u=currentUser(); if(!u) return goto('#/login'); if(!state.likes[u.id]) state.likes[u.id]=new Set(); const set=state.likes[u.id]; const v=state.videos.find(x=>x.id===vid); if(set.has(vid)){set.delete(vid); v.likes=Math.max(0,(v.likes||0)-1);} else {set.add(vid); v.likes=(v.likes||0)+1; if(state.dislikes[u.id]?.has(vid)){state.dislikes[u.id].delete(vid); v.dislikes=Math.max(0,(v.dislikes||0)-1);} } save(state); render(); goto('#/watch/'+vid);} 
+function toggleDislike(vid){const u=currentUser(); if(!u) return goto('#/login'); if(!state.dislikes[u.id]) state.dislikes[u.id]=new Set(); const set=state.dislikes[u.id]; const v=state.videos.find(x=>x.id===vid); if(set.has(vid)){set.delete(vid); v.dislikes=Math.max(0,(v.dislikes||0)-1);} else {set.add(vid); v.dislikes=(v.dislikes||0)+1; if(state.likes[u.id]?.has(vid)){state.likes[u.id].delete(vid); v.likes=Math.max(0,(v.likes||0)-1);} } save(state); render(); goto('#/watch/'+vid);} 
+function toggleSub(chId){const u=currentUser(); if(!u) return goto('#/login'); if(!state.subs[u.id]) state.subs[u.id]=new Set(); const set=state.subs[u.id]; const ch=state.channels.find(c=>c.id===chId); if(set.has(chId)){set.delete(chId); ch.subscribers=Math.max(0,(ch.subscribers||0)-1);} else {set.add(chId); ch.subscribers=(ch.subscribers||0)+1;} save(state); render(); goto('#/channel/'+chId);} 
+function share(link){navigator.clipboard?.writeText(link); alert('Link copied!');}
+
+function renderChannel(id){const ch=state.channels.find(c=>c.id===id); const main=$('#main'); if(!ch){main.innerHTML='<div class=container><h2>Channel not found</h2></div>'; return;} const mine=currentUser()?.id===ch.ownerId; const vids=state.videos.filter(v=>v.channelId===id).reverse(); const u=currentUser(); const subbed=u&&state.subs[u.id]?.has(ch.id); const html=`<div class=container><div class=banner style="height:120px;background:linear-gradient(90deg,#222,#333);border-radius:12px"></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><h2 style="margin:4px 0">${escapeHTML(ch.name)}</h2><div class=meta>${ch.subscribers||0} subscribers • ${vids.length} videos</div></div><div>${mine?`<button class=btn onclick="goto('#/upload')">Upload</button>`:`<button class="btn primary" onclick="toggleSub('${ch.id}')">${subbed?'Subscribed':'Subscribe'}</button>`}</div></div><div class=grid style="padding-left:0;padding-right:0">${vids.map(cardHTML).join('')}</div></div>`; main.innerHTML=html;}
+function renderSubs(){const u=currentUser(); if(!u) return goto('#/login'); const ids=Array.from(state.subs[u.id]||[]); const vids=state.videos.filter(v=>ids.includes(v.channelId)).reverse(); const main=$('#main'); main.innerHTML=`<div class=container><h2>Subscriptions</h2><div class=grid style="padding-left:0;padding-right:0">${vids.map(cardHTML).join('')||'<p class=meta>No videos yet.</p>'}</div></div>`;}
+function renderLibrary(){const u=currentUser(); if(!u) return goto('#/login'); const ids=Array.from(state.likes[u.id]||[]); const vids=state.videos.filter(v=>ids.includes(v.id)).reverse(); const main=$('#main'); main.innerHTML=`<div class=container><h2>Library • Liked</h2><div class=grid style="padding-left:0;padding-right:0">${vids.map(cardHTML).join('')||'<p class=meta>No liked videos.</p>'}</div></div>`;}
+
+window.addEventListener('hashchange',render); render();
+</script>
+</body>
+</html>
